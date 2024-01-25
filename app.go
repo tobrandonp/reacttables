@@ -1,30 +1,36 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"reacttables/config"
 	"reacttables/router"
-	"reacttables/utils"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
-func main() {
+type App struct {
+	Router       *gin.Engine
+	AlbumService *services.AlbumService
+	// ... other services
+}
+
+func NewApp() *App {
 	// Load env vars from dotenv
 	cfg := config.LoadConfig()
 
-	// Setup MongoDB connection
-	// mongoDB, _ := mongodb.NewMongoDB(cfg.MongoDbUri, "albums") // First attempt
-	mongoDB, err := utils.NewMongoDB(cfg.MongoDbUri, "albums")
+	// Initialize MongoDB connection
+	mongoDB, err := mongodb.NewMongoDB(cfg.MongoDbUri, "albums")
 	if err != nil {
-		log.Fatalf("Error initializing MongoDB connection: %v", err)
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
 	}
-	defer mongoDB.CloseConnection()
 
-	r := gin.Default()
+	// Initialize services
+	albumService := services.NewAlbumService(mongoDB)
+
+	// Setup Gin Router
+	router := gin.Default()
 
 	// CORS for https://foo.com and https://github.com origins, allowing:
 	// - PUT and PATCH methods
@@ -36,12 +42,10 @@ func main() {
 	//     Situations on where this is useful:
 	//    -Environment use case: "localhost" ok for DEVELOPMENT but not for PRODUCTION
 	//    -Pattern matching: "*.example.com"
-	fmt.Printf("Allowed origins: %v", cfg.AllowedOrigins)
-	r.Use(cors.New(cors.Config{
-		// AllowOrigins:     cfg.AllowedOrigins,
-		AllowOrigins:     []string{"http://localhost:5173"},
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     cfg.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH"},
-		AllowHeaders:     []string{"Origin", "Content-Type"}, // Include Content-Type if you're sending data
+		AllowHeaders:     []string{"Origin"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		// AllowOriginFunc: func(origin string) bool {
@@ -50,11 +54,22 @@ func main() {
 		MaxAge: time.Duration(cfg.CorsMaxAge) * time.Hour,
 	}))
 
-	// r.LoadHTMLGlob("views/*")
+	router.LoadHTMLGlob("views/*")
 
-	// Initialize routes
-	router.InitRoutes(r)
+	app := &App{
+		Router:       router,
+		AlbumService: albumService,
+		// ... initialize other services
+	}
 
-	// Start the server
-	r.Run(":8080")
+	return app
+}
+
+func (app *App) InitializeRoutes() {
+	router.InitRoutes(app.Router, app.AlbumService)
+	// ... initialize other routes
+}
+
+func (app *App) Run() {
+	app.Router.Run(":8080")
 }

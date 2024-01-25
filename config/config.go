@@ -13,6 +13,7 @@ import (
 type Config struct {
 	AllowedOrigins []string
 	CorsMaxAge     int // Max Age of Preflight requests
+	MongoDbUri     string
 	// Add other configuration variables here
 }
 
@@ -26,10 +27,12 @@ func LoadConfig() *Config {
 	}
 
 	allowedOrigins := getEnvAsSlice("ALLOWED_ORIGINS", ",", []string{"*"})
+	mongodbUri := getEnvAsString("MONGODB_URL", "")
 
 	return &Config{
 		AllowedOrigins: allowedOrigins,
 		CorsMaxAge:     getEnvAsInt("CORS_MAXAGE", 12), // Provide a default value
+		MongoDbUri:     mongodbUri,
 		// initialize other fields...
 	}
 }

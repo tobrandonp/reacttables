@@ -4,55 +4,55 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
-	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
-type Album struct {
-	ID     string  `bson:"ID"`
-	Title  string  `bson:"Title"`
-	Artist string  `bson:"Artist"`
-	Price  float64 `bson:"Price"`
+type MongoDB struct {
+	Client   *mongo.Client
+	Database *mongo.Database
 }
 
-// DBinstance func
-func DBinstance() *mongo.Client {
-	err := godotenv.Load(".env")
-
+// NewMongoDB creates a new MongoDB client and establishes a connection.
+func NewMongoDB(uri, dbName string) (*MongoDB, error) {
+	client, err := mongo.NewClient(options.Client().ApplyURI(uri))
 	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
-	MongoDb := os.Getenv("MONGODB_URL")
-
-	client, err := mongo.NewClient(options.Client().ApplyURI(MongoDb))
-	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to create new MongoDB client: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
 	defer cancel()
+
 	err = client.Connect(ctx)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}
-	fmt.Println("Connected to MongoDB!")
 
-	return client
+	// Ping the primary to ensure network connectivity
+	if err = client.Ping(ctx, readpref.Primary()); err != nil {
+		return nil, fmt.Errorf("failed to ping MongoDB: %w", err)
+	}
+
+	db := client.Database(dbName)
+
+	return &MongoDB{Client: client, Database: db}, nil
 }
 
-// Client Database instance
-var Client *mongo.Client = DBinstance()
+// GetCollection returns a handle to a collection in the database.
+func (m *MongoDB) GetCollection(collectionName string) *mongo.Collection {
+	return m.Database.Collection(collectionName)
+}
 
-// OpenCollection is a  function makes a connection with a collection in the database
-func OpenCollection(client *mongo.Client, collectionName string) *mongo.Collection {
-
-	var collection *mongo.Collection = client.Database("cluster0").Collection(collectionName)
-
-	return collection
+// CloseConnection closes the MongoDB connection.
+func (m *MongoDB) CloseConnection() {
+	if m.Client != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.Client.Disconnect(ctx); err != nil {
+			log.Printf("Warning: failed to close MongoDB connection: %v", err)
+		}
+	}
 }
